@@ -15,7 +15,16 @@ def features(audio_path: str) -> np.ndarray:
     y, _ = librosa.load(audio_path, sr=SAMPLE_RATE, mono=True, duration=10)
     if len(y) < 512: raise ValueError(f"Audio is too short or empty: {audio_path}")
     mfcc = librosa.feature.mfcc(y=y, sr=SAMPLE_RATE, n_mfcc=20)
-    delta = librosa.feature.delta(mfcc)
+    if mfcc.shape[1] < 3:
+        delta = np.zeros_like(mfcc)
+    else:
+        delta_width = min(
+            9,
+            mfcc.shape[1] if mfcc.shape[1] % 2 else mfcc.shape[1] - 1,
+        )
+        delta = librosa.feature.delta(
+            mfcc, width=delta_width, mode="nearest"
+        )
     chroma = librosa.feature.chroma_stft(y=y, sr=SAMPLE_RATE)
     spectral = np.vstack([
         librosa.feature.rms(y=y),
