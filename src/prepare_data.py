@@ -14,12 +14,13 @@ def locate_audio(root: Path, audio_id: str) -> Path | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--subset-size", type=int, default=240, help="Even: half happy, half not_happy.")
+    parser.add_argument("--subset-size", type=int, default=0,
+        help="Number of clips to use. Default 0 uses all official training clips.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--download-dir", default="data/raw/barkopedia")
     args = parser.parse_args()
-    if args.subset_size < 60 or args.subset_size % 2:
-        raise ValueError("--subset-size must be an even number of at least 60.")
+    if args.subset_size and args.subset_size < 60:
+        raise ValueError("--subset-size must be 0 (all clips) or at least 60.")
     root = Path(snapshot_download(repo_id=REPO_ID, repo_type="dataset", local_dir=args.download_dir,
         allow_patterns=["train/**/*.wav", "husky_train_labels.csv", "shiba_train_labels.csv"]))
     tables = []
@@ -42,10 +43,19 @@ def main() -> None:
         raise ValueError("Unexpected valence value in official labels.")
     counts = labels.valence.value_counts().reindex(["Positive", "Neutral", "Negative"], fill_value=0)
     print("Official training labels by valence:\n" + counts.to_string())
-    per_class = args.subset_size // 2
-    happy = labels[labels.binary_label == "happy"].sample(per_class, random_state=args.seed)
-    not_happy = labels[labels.binary_label == "not_happy"].sample(per_class, random_state=args.seed)
-    subset = pd.concat([happy, not_happy], ignore_index=True).sample(frac=1, random_state=args.seed)
+    if args.subset_size == 0:
+        # Use all 1,000 official training clips. The classifier handles the
+        # natural 429/571 binary imbalance with class-weighted training.
+        subset = labels.sample(frac=1, random_state=args.seed)
+    else:
+        # A smaller study is balanced by binary class, never by the viewer's
+        # generic breed label.
+        per_class = args.subset_size // 2
+        if per_class > min((labels.binary_label == "happy").sum(), (labels.binary_label == "not_happy").sum()):
+            raise ValueError("Requested subset is larger than the smallest binary class.")
+        happy = labels[labels.binary_label == "happy"].sample(per_class, random_state=args.seed)
+        not_happy = labels[labels.binary_label == "not_happy"].sample(per_class, random_state=args.seed)
+        subset = pd.concat([happy, not_happy], ignore_index=True).sample(frac=1, random_state=args.seed)
     train, remainder = train_test_split(subset, test_size=.30, stratify=subset.binary_label, random_state=args.seed)
     validation, test = train_test_split(remainder, test_size=.50, stratify=remainder.binary_label, random_state=args.seed)
     out = Path("data/processed"); out.mkdir(parents=True, exist_ok=True)
@@ -53,6 +63,6 @@ def main() -> None:
         frame.sort_values("audio_id").to_csv(out / f"{name}.csv", index=False)
         print(f"{name}: {len(frame)} clips; {frame.binary_label.value_counts().to_dict()}")
     pd.DataFrame({"valence": counts.index, "count": counts.values}).to_csv(out / "official_train_valence_counts.csv", index=False)
-    print(f"Wrote reproducible {args.subset_size}-clip subset (seed={args.seed}).")
+    print(f"Wrote reproducible {len(subset)}-clip subset (seed={args.seed}).")
 
 if __name__ == "__main__": main()

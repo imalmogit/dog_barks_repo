@@ -29,11 +29,11 @@ Do **not** use the generic `label` field shown by the Hugging Face viewer: it re
 
 The Hugging Face release documents Positive/Neutral/Negative valence and Low/Medium/High arousal. The related official EmotionalCanines repository hosts the same label-file scheme.
 
-## Why 240 clips instead of exactly 150?
+## Why use all 1,000 training clips?
 
 The 1,000 official training clips contain **429 Positive**, **340 Neutral**, and **231 Negative** labels; after conversion this is **429 happy** and **571 not_happy**. A random 150-clip subset would preserve that imbalance (about 64 happy / 86 not-happy). A deliberately balanced 150 subset is possible (75/75), but a 70/15/15 split produces only about 22–23 clips per validation/test class—too unstable for a meaningful baseline.
 
-This project therefore uses **240 clips**, sampled reproducibly with seed 42: 120 happy and 120 not-happy. It yields a balanced 168/36/36 train/validation/test split (84/84, 18/18, 18/18). This is still lightweight, but makes the held-out scores less noisy.
+This improved version uses **all 1,000 official training clips**. It keeps their natural 429/571 binary distribution and uses class-weighted models to reduce the effect of that imbalance. The fixed seed creates a stratified 70/15/15 train/validation/test split (700/150/150), which gives a far more stable validation and test result than 150 or 240 clips.
 
 The public label CSVs do not include a dog identity. Consequently, this script cannot enforce dog-disjoint splitting and does not claim generalisation to new individual dogs. It does keep a frozen test CSV that `train.py` never reads. The original dataset paper reports dog-level splits for its release, but this small random prototype should be described as clip-disjoint only unless identity metadata is later obtained.
 
@@ -43,7 +43,7 @@ From the project folder, create/activate an environment and install the ML depen
 
 ```bash
 python -m pip install -r requirements-ml.txt
-python src/prepare_data.py --subset-size 240 --seed 42
+python src/prepare_data.py --seed 42
 python src/train.py
 python -m streamlit run app/app.py
 ```
@@ -58,7 +58,7 @@ It writes the held-out macro-F1 and a confusion matrix into `models/`. Keep the 
 
 ## Model choice
 
-The baseline uses 20 MFCC acoustic features (their mean and variation over the clip) and logistic regression. It is intentionally simple, fast on a CPU, and appropriate for a first 240-clip study. A pretrained audio embedding model may be a useful later comparison, but should not replace this interpretable baseline before it is measured.
+The improved CPU baseline uses MFCCs, their time variation, chroma, and spectral/energy features. It compares class-weighted logistic regression with an RBF support-vector machine on the validation split, then saves the better one. This makes a stronger baseline, but does not guarantee any target score; the held-out test set remains the final check.
 
 ## Limits to state in a report
 
