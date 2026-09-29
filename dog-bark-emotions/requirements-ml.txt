@@ -1,0 +1,10 @@
+-r requirements.txt
+torch
+huggingface-hub
+librosa
+soundfile
+numpy
+pandas
+scikit-learn
+joblib
+matplotlib
